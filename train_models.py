@@ -9,12 +9,14 @@ from models import CNNEmulator, LatentODE
 
 
 def loss_fn(model, batch):
-    # Fill
-    raise NotImplementedError
+    inputs, targets = batch
+    predictions = model(inputs)  
+    loss = jnp.mean((predictions - targets) ** 2)  
+    return loss
 
 def train(
     model: CNNEmulator,
-    dataset: Float[Array, " n_samples n_res n_res"],
+    dataset: Float[Array, "n_samples 2 n_res n_res"],
     batch_size: Int,
     learning_rate: Float,
     num_epochs: Int,
@@ -28,16 +30,26 @@ def train(
     def make_step(
         model: CNNEmulator,
         opt_state: optax.OptState,
-        batch: Float[Array, " n_samples n_res n_res"],
+        batch: Float[Array, "n_samples 2 n_res n_res"],
     ) -> tuple:
-        loss, grads = eqx.filter_value_and_grad(#Fill here)
-        updates, opt_state = optimizer.update(#Fill here)
+        loss, grads = eqx.filter_value_and_grad(loss_fn)(model, batch)
+        updates, opt_state = optimizer.update(grads, opt_state, model)
         model = eqx.apply_updates(model, updates)
         return model, opt_state, loss
     
     print("Training...")
-    # Write your training loop here
+    num_samples = dataset[0].shape[0]
+    key, subkey = jax.random.split(key)
+    for epoch in range(num_epochs):
+        keys = jax.random.split(subkey, num_samples // batch_size)
+        for k in keys:
+            batch_indices = jax.random.choice(k, num_samples, (batch_size,), replace=False)
+            batch = (dataset[0][batch_indices], dataset[1][batch_indices])
+            model, opt_state, loss = make_step(model, opt_state, batch)
+        print(f"Epoch {epoch+1}, Loss: {loss}")
+    
     return model
+
 
 IMAGE_SIZE = 64
 
